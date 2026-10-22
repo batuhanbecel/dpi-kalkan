@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import KalkanCore
 
@@ -104,4 +105,23 @@ private func makeClientHello(host: String) -> [UInt8] {
     #expect(pac.contains("PROXY 127.0.0.1:8881; DIRECT"))
     config.onlyListedDomains = false
     #expect(!PACScript.make(config: config).contains("var list"))
+}
+
+@Test func versionComparison() {
+    #expect(UpdateFeed.isNewer("v1.10.0", than: "1.9.2"))
+    #expect(UpdateFeed.isNewer("1.2", than: "1.1.9"))
+    #expect(!UpdateFeed.isNewer("1.1.0", than: "1.1"))
+    #expect(!UpdateFeed.isNewer("v1.0.0", than: "1.1.0"))
+}
+
+@Test func parsesLatestRelease() throws {
+    let json = """
+    {"tag_name":"v1.2.0","html_url":"https://github.com/batuhanbecel/dpi-kalkan/releases/tag/v1.2.0","body":"Notlar",
+     "assets":[{"name":"other.txt","browser_download_url":"https://x/other.txt"},
+               {"name":"DPI-Kalkan.zip","browser_download_url":"https://x/DPI-Kalkan.zip"}]}
+    """
+    let info = try #require(UpdateFeed.parse(Data(json.utf8)))
+    #expect(info.version == "1.2.0")
+    #expect(info.assetURL?.absoluteString == "https://x/DPI-Kalkan.zip")
+    #expect(UpdateFeed.parse(Data("{}".utf8)) == nil)
 }

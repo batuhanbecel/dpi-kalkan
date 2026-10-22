@@ -4,10 +4,11 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var model: AppModel
+    let updater: Updater
 
     var body: some View {
         TabView {
-            GeneralTab(model: model)
+            GeneralTab(model: model, updater: updater)
                 .tabItem { Label("Genel", systemImage: "gearshape") }
             SitesTab(model: model)
                 .tabItem { Label("Siteler", systemImage: "globe") }
@@ -24,6 +25,7 @@ struct SettingsView: View {
 
 private struct GeneralTab: View {
     @Bindable var model: AppModel
+    @Bindable var updater: Updater
     @State private var testHost = ""
 
     private var version: String {
@@ -57,6 +59,22 @@ private struct GeneralTab: View {
                 Toggle("Sistem geneline uygula", isOn: $model.systemWide)
             }
 
+            Section("Güncellemeler") {
+                Toggle("Güncellemeleri otomatik denetle", isOn: $updater.automatic)
+                HStack {
+                    updateStatus
+                    Spacer()
+                    if let release = updater.available {
+                        Button("Sürüm Notları") { NSWorkspace.shared.open(release.pageURL) }
+                        Button("Güncelle") { Task { await updater.install() } }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Şimdi Denetle") { Task { await updater.check() } }
+                            .disabled(updater.state == .checking || updater.state == .installing)
+                    }
+                }
+            }
+
             Section("Erişim testi") {
                 HStack {
                     TextField("Site", text: $testHost, prompt: Text("discord.com"))
@@ -81,7 +99,34 @@ private struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 390)
+        .frame(height: 500)
+    }
+
+    @ViewBuilder private var updateStatus: some View {
+        switch updater.state {
+        case .checking:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Denetleniyor…").foregroundStyle(.secondary)
+            }
+        case .installing:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Güncelleniyor…").foregroundStyle(.secondary)
+            }
+        case .available(let release):
+            Label("Sürüm \(release.version) hazır", systemImage: "arrow.down.circle.fill").foregroundStyle(.blue)
+        case .upToDate:
+            Label("Güncel", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        case .idle:
+            if let last = updater.lastCheck {
+                Text("Son denetim: \(last.formatted(date: .abbreviated, time: .shortened))").foregroundStyle(.secondary)
+            } else {
+                Text("Henüz denetlenmedi").foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

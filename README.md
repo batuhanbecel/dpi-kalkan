@@ -17,6 +17,7 @@ DPI Kalkan, servis sağlayıcıların derin paket incelemesiyle (DPI) uyguladı�
 - **Otomatik geri dönüş:** Bölmeyi kabul etmeyen sunucular için (ör. bazı bankalar) TCP segment bölmeye kendiliğinden geçer ve bunu o site için hatırlar.
 - **Kapsam:** Tüm siteler ya da yalnızca listedekiler.
 - **Kesintisiz kapatma:** Koruma kapanınca ya da ayar değişince açık bağlantılar kesilmez, yeni bağlantılar doğrudan gider. Uygulama çökse bile internet doğrudan çalışmaya devam eder; çıkışta tüm sistem ayarları geri alınır.
+- **Otomatik güncelleme:** Yeni sürümü GitHub'dan denetler; tek tıkla indirir, imzasını doğrular ve yeniden başlar.
 - **macOS 26/27 tasarımı:** Liquid Glass uygulama ikonu, menüde yeşil parlamalı güç düğmesi.
 
 ## Kurulum
@@ -52,6 +53,16 @@ swift test
 ```
 
 Paket `build/DPI Kalkan.app` konumuna, paylaşım arşivi `build/DPI-Kalkan.zip` konumuna yazılır. Derleme Xcode 26 veya sonrasını gerektirir: ikon, `Resources/AppIcon.icon` Icon Composer belgesinden `actool` ile derlenir. Kalkan katmanlarını `Scripts/make-icon.swift` üretir.
+
+### İmzalı ve noterli sürüm
+
+Anahtar zincirinde **Developer ID Application** sertifikası varsa `build-app.sh` uygulamayı onunla imzalar (hardened runtime) ve `--zip` ile Apple'a noterlemeye gönderir. Bir kez noterleme profili kaydetmek gerekir:
+
+```bash
+xcrun notarytool store-credentials dpi-kalkan --apple-id <apple-kimliği> --team-id <ekip-kimliği>
+```
+
+Uygulamaya özel parola [account.apple.com](https://account.apple.com) › Oturum Açma ve Güvenlik › Uygulamaya Özel Parolalar bölümünden alınır. Developer ID ile imzalanmış bir sürüm kurulduktan sonra güncelleyici yalnızca aynı ekip kimliğiyle imzalanmış sürümleri kabul eder.
 
 Arayüzsüz kullanım için:
 

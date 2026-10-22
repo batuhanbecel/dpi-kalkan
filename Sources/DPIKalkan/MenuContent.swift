@@ -4,6 +4,7 @@ import SwiftUI
 /// Menü çubuğu penceresi: ortada büyük güç düğmesi, altında durum ve kapsam seçimi.
 struct MenuContent: View {
     @Bindable var model: AppModel
+    let updater: Updater
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -27,6 +28,13 @@ struct MenuContent: View {
             .padding(.horizontal, 16)
             .padding(.top, 18)
 
+            if UpdateBanner.isVisible(for: updater) {
+                UpdateBanner(updater: updater)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 14)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             Divider()
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -37,6 +45,7 @@ struct MenuContent: View {
                 .padding(.bottom, 6)
         }
         .frame(width: 280)
+        .animation(.easeInOut(duration: 0.25), value: UpdateBanner.isVisible(for: updater))
     }
 
     private var header: some View {
@@ -145,13 +154,97 @@ private struct PressScaleStyle: ButtonStyle {
     }
 }
 
+// MARK: Güncelleme
+
+/// Yeni sürüm varken, kurulurken ya da kurulum başarısız olunca görünen cam kart.
+private struct UpdateBanner: View {
+    let updater: Updater
+
+    static func isVisible(for updater: Updater) -> Bool {
+        switch updater.state {
+        case .available, .installing: true
+        case .failed: updater.fallbackPage != nil
+        default: false
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 6)
+            action
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .glassPanel()
+    }
+
+    private var title: String {
+        switch updater.state {
+        case .installing: "Güncelleniyor…"
+        case .failed: "Güncellenemedi"
+        default: "Güncelleme var"
+        }
+    }
+
+    private var subtitle: String? {
+        switch updater.state {
+        case .available(let release): "Sürüm \(release.version)"
+        case .failed(let message): message
+        default: nil
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        switch updater.state {
+        case .installing:
+            ProgressView().controlSize(.small)
+        case .failed:
+            if let page = updater.fallbackPage {
+                Button("Sayfayı Aç") { NSWorkspace.shared.open(page) }
+                    .controlSize(.small)
+            }
+        default:
+            ProminentButton("Güncelle") { Task { await updater.install() } }
+        }
+    }
+}
+
+private struct ProminentButton: View {
+    let title: String
+    let action: () -> Void
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            Button(title, action: action).buttonStyle(.glassProminent).controlSize(.small)
+        } else {
+            Button(title, action: action).buttonStyle(.borderedProminent).controlSize(.small)
+        }
+    }
+}
+
 // MARK: Çıkış satırı
 
 private struct QuitRow: View {
     @State private var hovering = false
 
     var body: some View {
-        Button { NSApp.terminate(nil) } label: {
+        Button { NSApp.requestTermination() } label: {
             HStack {
                 Text("Çık")
                 Spacer()
@@ -176,6 +269,16 @@ private struct QuitRow: View {
 
 private extension View {
     /// macOS 26 ve sonrasında Liquid Glass, öncesinde buzlu cam daire.
+    @ViewBuilder
+    func glassPanel() -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        if #available(macOS 26.0, *) {
+            glassEffect(.regular, in: shape)
+        } else {
+            background(.quaternary.opacity(0.6), in: shape)
+        }
+    }
+
     @ViewBuilder
     func glassCircle(interactive: Bool = false) -> some View {
         if #available(macOS 26.0, *) {

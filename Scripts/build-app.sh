@@ -1,11 +1,18 @@
 #!/bin/zsh
 # Evrensel (Apple Silicon + Intel) sürüm derlemesi yapıp "DPI Kalkan.app" paketini build/ klasörüne üretir.
 # --zip verilirse paylaşım için build/DPI-Kalkan.zip de oluşturur.
+#
+# İmza: anahtar zincirinde "Developer ID Application" sertifikası varsa onunla (hardened runtime +
+# zaman damgası) imzalar, yoksa ad-hoc imzalar. SIGN_IDENTITY ile kimlik elle seçilebilir.
+# Noterleme: Developer ID ile --zip derlemesinde, NOTARY_PROFILE (varsayılan "dpi-kalkan") adlı
+# notarytool profiliyle Apple'a gönderir ve sonucu pakete zımbalar. Atlamak için NOTARIZE=0.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 ARCHS=(--arch arm64 --arch x86_64)
+IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | grep -m1 -o '"Developer ID Application: [^"]*"' | tr -d '"' || true)}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-dpi-kalkan}"
 
 ./Scripts/compile-icon.sh
 swift build -c release --product DPIKalkan "${ARCHS[@]}"
@@ -40,11 +47,32 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP"
+if [[ -n "$IDENTITY" ]]; then
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+    echo "İmzalandı: $IDENTITY"
+else
+    codesign --force --sign - "$APP"
+    echo "Developer ID sertifikası bulunamadı; ad-hoc imzalandı (indirenler ilk açılışta uyarı görür)."
+fi
+codesign --verify --deep --strict "$APP"
 echo "Hazır: $PWD/$APP"
 
-if [[ "${1:-}" == "--zip" ]]; then
-    rm -f build/DPI-Kalkan.zip
-    ditto -c -k --keepParent "$APP" build/DPI-Kalkan.zip
-    echo "Arşiv: $PWD/build/DPI-Kalkan.zip"
+[[ "${1:-}" == "--zip" ]] || exit 0
+
+ZIP="build/DPI-Kalkan.zip"
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
+
+if [[ -n "$IDENTITY" && "${NOTARIZE:-1}" != "0" ]]; then
+    echo "Noterleme için Apple'a gönderiliyor ($NOTARY_PROFILE)…"
+    if ! xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait; then
+        echo "Noterleme başarısız. Profil yoksa bir kez şunu çalıştır:" >&2
+        echo "  xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <apple-id> --team-id <team-id>" >&2
+        exit 1
+    fi
+    xcrun stapler staple "$APP"
+    rm -f "$ZIP"
+    ditto -c -k --keepParent "$APP" "$ZIP"
+    spctl --assess --type execute --verbose "$APP"
 fi
+echo "Arşiv: $PWD/$ZIP"

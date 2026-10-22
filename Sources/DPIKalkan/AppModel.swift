@@ -66,12 +66,14 @@ final class AppModel {
     /// Kapatılmış ama açık bağlantıları hâlâ süren sunucular; bağlantılar bitince bırakılır.
     private var retired: [ProxyServer] = []
     private var lastToggle = Date.distantPast
-    private var cleanedUp = false
+    /// Sistem proxy ayarını bu süreç mi yazdı; yalnızca o zaman geri alınır (başka örneğin ayarına dokunulmaz).
+    private var systemProxyApplied = false
     /// PAC adresine eklenir; macOS önbelleğe aldığı eski PAC'i bırakıp yenisini okusun diye.
     private var pacVersion = Int(Date().timeIntervalSince1970)
     private let proxyQueue = DispatchQueue(label: "dpikalkan.systemproxy")
 
-    init() {
+    /// `startProtection` false ise (ör. ikinci kez açılan örnek) proxy ve sistem ayarlarına hiç dokunulmaz.
+    init(startProtection: Bool = true) {
         let d = UserDefaults.standard
         var c = ProxyConfig()
         if let p = d.object(forKey: "port") as? Int, let port = UInt16(exactly: p) { c.port = port }
@@ -84,8 +86,9 @@ final class AppModel {
         config = c
         autoStart = d.object(forKey: "autoStart") as? Bool ?? true
         systemWide = d.object(forKey: "systemWide") as? Bool ?? true
+        guard startProtection else { return }
         // Önceki oturum düzgün kapanmadıysa kalan sistem ayarlarını temizle.
-        if autoStart { start() } else { removeSystemProxy() }
+        if autoStart { start() } else { proxyQueue.async { SystemProxy.disable() } }
     }
 
     private func saveConfig() {
@@ -109,7 +112,6 @@ final class AppModel {
     func start() {
         guard server == nil else { return }
         lastError = nil
-        cleanedUp = false
         let server = ProxyServer(config: config)
         server.onStateChange = { [weak self, weak server] running, error in
             Task { @MainActor in
@@ -159,10 +161,12 @@ final class AppModel {
 
     /// Çıkmadan önce: sistem ayarını kaldırır ve açık bağlantılara en fazla iki saniye bitme süresi tanır.
     func prepareToQuit() async {
-        await withCheckedContinuation { done in
-            proxyQueue.async { SystemProxy.disable(); done.resume() }
+        if systemProxyApplied {
+            systemProxyApplied = false
+            await withCheckedContinuation { done in
+                proxyQueue.async { SystemProxy.disable(); done.resume() }
+            }
         }
-        cleanedUp = true
         retire()
         isRunning = false
         let deadline = Date().addingTimeInterval(2)
@@ -177,7 +181,10 @@ final class AppModel {
         server = nil
         retired.forEach { $0.stop() }
         retired.removeAll()
-        if !cleanedUp { proxyQueue.sync { SystemProxy.disable() } }
+        if systemProxyApplied {
+            systemProxyApplied = false
+            proxyQueue.sync { SystemProxy.disable() }
+        }
     }
 
     private func restart() {
@@ -190,6 +197,7 @@ final class AppModel {
     }
 
     private func applySystemProxy() {
+        systemProxyApplied = true
         pacVersion += 1
         let (port, version) = (config.port, pacVersion)
         proxyQueue.async {
@@ -202,6 +210,8 @@ final class AppModel {
     }
 
     private func removeSystemProxy() {
+        guard systemProxyApplied else { return }
+        systemProxyApplied = false
         proxyQueue.async { SystemProxy.disable() }
     }
 
