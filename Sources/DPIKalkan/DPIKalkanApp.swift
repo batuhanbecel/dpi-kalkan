@@ -32,6 +32,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         source.setEventHandler { NSApp.terminate(nil) }
         source.resume()
         termSource = source
+
+        #if DEBUG
+        // Geliştirme: `DPIKalkan --preview` menü içeriğini sıradan bir pencerede gösterir (ekran görüntüsü için).
+        if CommandLine.arguments.contains("--preview") {
+            NSApp.setActivationPolicy(.regular)
+            let window = NSWindow(contentViewController: NSHostingController(rootView: MenuContent(model: model)))
+            window.title = "Menü önizleme"
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+            previewWindow = window
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private var previewWindow: NSWindow?
+    #endif
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task {
+            await model.prepareToQuit()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -39,18 +63,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Menü çubuğundaki "DPI" yazısı. Şablon görüntü olduğu için açık/koyu menü çubuğuna uyar;
-/// kapalıyken saydamlaşır.
+/// Menü çubuğundaki kalkan simgesi ve "DPI" yazısı. Şablon görüntü olduğu için açık/koyu menü
+/// çubuğuna uyar; kapalıyken kalkan üstü çizili ve soluk görünür.
 enum MenuBarIcon {
     static func image(active: Bool) -> NSImage {
+        let alpha: CGFloat = active ? 1 : 0.45
+        let symbol = NSImage(systemSymbolName: active ? "shield.lefthalf.filled" : "shield.slash",
+                             accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold)) ?? NSImage()
         let text = NSAttributedString(string: "DPI", attributes: [
             .font: NSFont.systemFont(ofSize: 12.5, weight: .bold),
-            .foregroundColor: NSColor.black.withAlphaComponent(active ? 1 : 0.35),
-            .kern: 0.4,
+            .foregroundColor: NSColor.black.withAlphaComponent(alpha),
+            .kern: 0.3,
         ])
-        let size = text.size()
-        let image = NSImage(size: NSSize(width: ceil(size.width), height: 16), flipped: false) { rect in
-            text.draw(at: NSPoint(x: 0, y: (rect.height - size.height) / 2))
+        let textSize = text.size()
+        let gap: CGFloat = 3
+        let height: CGFloat = 17
+        let width = ceil(symbol.size.width + gap + textSize.width)
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            let symbolRect = NSRect(x: 0, y: (rect.height - symbol.size.height) / 2,
+                                    width: symbol.size.width, height: symbol.size.height)
+            symbol.draw(in: symbolRect, from: .zero, operation: .sourceOver, fraction: alpha)
+            text.draw(at: NSPoint(x: symbol.size.width + gap, y: (rect.height - textSize.height) / 2))
             return true
         }
         image.isTemplate = true

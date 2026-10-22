@@ -16,7 +16,8 @@ DPI Kalkan, servis sağlayıcıların derin paket incelemesiyle (DPI) uyguladı�
 - **Kayıt başı bölme:** ClientHello'nun ilk TLS kaydı yalnızca 1 bayt taşır. Basit bölmenin yetmediği yerde de işe yarar.
 - **Otomatik geri dönüş:** Bölmeyi kabul etmeyen sunucular için (ör. bazı bankalar) TCP segment bölmeye kendiliğinden geçer ve bunu o site için hatırlar.
 - **Kapsam:** Tüm siteler ya da yalnızca listedekiler.
-- **Güvenli kapanış:** Uygulama kapanınca ya da çökünce internet doğrudan çalışmaya devam eder; çıkışta tüm sistem ayarları geri alınır.
+- **Kesintisiz kapatma:** Koruma kapanınca ya da ayar değişince açık bağlantılar kesilmez, yeni bağlantılar doğrudan gider. Uygulama çökse bile internet doğrudan çalışmaya devam eder; çıkışta tüm sistem ayarları geri alınır.
+- **macOS 26/27 tasarımı:** Liquid Glass uygulama ikonu, menüde yeşil parlamalı güç düğmesi.
 
 ## Kurulum
 
@@ -28,7 +29,7 @@ DPI Kalkan, servis sağlayıcıların derin paket incelemesiyle (DPI) uyguladı�
    xattr -dr com.apple.quarantine "/Applications/DPI Kalkan.app"
    ```
 
-Menü çubuğunda **DPI** yazısı görünür; soluk görünüyorsa koruma kapalıdır.
+Menü çubuğunda kalkan simgesi ve **DPI** yazısı görünür; tıklayıp ortadaki güç düğmesiyle korumayı açıp kapatabilirsin.
 
 > **Discord kullanıyorsan:** Discord'u DPI Kalkan açıldıktan sonra başlat. Discord açıkken DPI Kalkan'ı başlattıysan Discord'dan çıkıp yeniden aç. Discord'un güncelleyicisi proxy ayarını yalnızca açılışta okur.
 
@@ -50,7 +51,7 @@ swift test
 ./Scripts/build-app.sh --zip
 ```
 
-Paket `build/DPI Kalkan.app` konumuna, paylaşım arşivi `build/DPI-Kalkan.zip` konumuna yazılır. İkon `Scripts/make-icon.swift` ile yeniden üretilebilir.
+Paket `build/DPI Kalkan.app` konumuna, paylaşım arşivi `build/DPI-Kalkan.zip` konumuna yazılır. Derleme Xcode 26 veya sonrasını gerektirir: ikon, `Resources/AppIcon.icon` Icon Composer belgesinden `actool` ile derlenir. Kalkan katmanlarını `Scripts/make-icon.swift` üretir.
 
 Arayüzsüz kullanım için:
 

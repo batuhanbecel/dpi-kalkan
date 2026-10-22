@@ -28,10 +28,12 @@ public struct ProxyStats: Equatable, Sendable {
 /// 127.0.0.1 üzerinde çalışan HTTP proxy (CONNECT + düz HTTP).
 /// Tünelin ilk TLS paketini (ClientHello) bölerek SNI tabanlı engeli aşar.
 public final class ProxyServer: @unchecked Sendable {
-    public let config: ProxyConfig
+    public private(set) var config: ProxyConfig
     public var onStats: ((ProxyStats) -> Void)?
     public var onLog: ((String) -> Void)?
     public var onStateChange: ((Bool, String?) -> Void)?
+    /// `drain()` sonrası son açık bağlantı da kapanınca çağrılır.
+    public var onDrained: (() -> Void)?
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "dpikalkan.listener")
@@ -39,6 +41,7 @@ public final class ProxyServer: @unchecked Sendable {
     private let strategies = StrategyCache()
     private var stats = ProxyStats()
     private var sessions: [ObjectIdentifier: ProxySession] = [:]
+    private var draining = false
 
     public init(config: ProxyConfig) {
         self.config = config
@@ -71,6 +74,7 @@ public final class ProxyServer: @unchecked Sendable {
         self.listener = listener
     }
 
+    /// Hemen durur ve açık bağlantıları keser (uygulamadan çıkarken).
     public func stop() {
         queue.async { [self] in
             listener?.cancel()
@@ -78,6 +82,23 @@ public final class ProxyServer: @unchecked Sendable {
             sessions.values.forEach { $0.close() }
             sessions.removeAll()
         }
+    }
+
+    /// Yeni bağlantı kabul etmeyi bırakır; açık bağlantılar (ör. süren bir indirme ya da canlı akış)
+    /// kesilmeden kendiliğinden bitene kadar sürer.
+    public func drain() {
+        queue.async { [self] in
+            draining = true
+            listener?.cancel()
+            listener = nil
+            if sessions.isEmpty { onDrained?() }
+        }
+    }
+
+    /// Yeni bağlantılar için ayarları değiştirir; açık bağlantılar eski ayarla sürer.
+    /// Port değişikliği bunu kapsamaz, yeni bir sunucu gerekir.
+    public func update(config: ProxyConfig) {
+        queue.async { self.config = config }
     }
 
     private func accept(_ conn: NWConnection) {
@@ -94,6 +115,7 @@ public final class ProxyServer: @unchecked Sendable {
             guard let self else { return }
             self.queue.async {
                 self.sessions[id] = nil
+                if self.draining, self.sessions.isEmpty { self.onDrained?() }
                 self.updateStats {
                     $0.active -= 1
                     if error != nil { $0.failed += 1 }

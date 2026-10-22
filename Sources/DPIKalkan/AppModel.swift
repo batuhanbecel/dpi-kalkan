@@ -20,7 +20,14 @@ final class AppModel {
         didSet {
             guard oldValue != config else { return }
             saveConfig()
-            if server != nil { restart() }
+            guard let server else { return }
+            // Açık bağlantıları kesmemek için yalnızca port değişince yeni sunucuya geçilir.
+            if oldValue.port != config.port { return restart() }
+            server.update(config: config)
+            if isRunning, systemWide,
+               oldValue.onlyListedDomains != config.onlyListedDomains || oldValue.domains != config.domains {
+                applySystemProxy()   // PAC içeriği değişti
+            }
         }
     }
 
@@ -56,6 +63,10 @@ final class AppModel {
     }
 
     private var server: ProxyServer?
+    /// Kapatılmış ama açık bağlantıları hâlâ süren sunucular; bağlantılar bitince bırakılır.
+    private var retired: [ProxyServer] = []
+    private var lastToggle = Date.distantPast
+    private var cleanedUp = false
     /// PAC adresine eklenir; macOS önbelleğe aldığı eski PAC'i bırakıp yenisini okusun diye.
     private var pacVersion = Int(Date().timeIntervalSince1970)
     private let proxyQueue = DispatchQueue(label: "dpikalkan.systemproxy")
@@ -89,16 +100,20 @@ final class AppModel {
     // MARK: Koruma
 
     func setEnabled(_ enabled: Bool) {
+        // Cam düğme tek basışı iki kez iletebiliyor; hemen ardından gelen ikinci geçişi yok say.
+        guard Date().timeIntervalSince(lastToggle) > 0.4 else { return }
+        lastToggle = Date()
         enabled ? start() : stop()
     }
 
     func start() {
         guard server == nil else { return }
         lastError = nil
+        cleanedUp = false
         let server = ProxyServer(config: config)
-        server.onStateChange = { [weak self] running, error in
+        server.onStateChange = { [weak self, weak server] running, error in
             Task { @MainActor in
-                guard let self, self.server === server else { return }
+                guard let self, let server, self.server === server else { return }
                 self.isRunning = running
                 if running, self.systemWide { self.applySystemProxy() }
                 if let error {
@@ -108,8 +123,16 @@ final class AppModel {
                 }
             }
         }
-        server.onStats = { [weak self] s in Task { @MainActor in self?.stats = s } }
+        server.onStats = { [weak self, weak server] s in
+            Task { @MainActor in
+                guard let self, let server, self.server === server else { return }
+                self.stats = s
+            }
+        }
         server.onLog = { [weak self] line in Task { @MainActor in self?.appendLog(line) } }
+        server.onDrained = { [weak self, weak server] in
+            Task { @MainActor in self?.retired.removeAll { $0 === server } }
+        }
         do {
             try server.start()
             self.server = server
@@ -118,25 +141,48 @@ final class AppModel {
         }
     }
 
+    /// Korumayı kapatır. Sistem ayarı hemen kalkar, yeni bağlantılar doğrudan gider; açık bağlantılar
+    /// (ör. bir indirme ya da sohbet akışı) kesilmeden kendi bitene kadar sürer.
     func stop() {
         removeSystemProxy()
-        server?.stop()
-        server = nil
+        retire()
         isRunning = false
         stats.active = 0
+    }
+
+    private func retire() {
+        guard let server else { return }
+        self.server = nil
+        retired.append(server)
+        server.drain()
+    }
+
+    /// Çıkmadan önce: sistem ayarını kaldırır ve açık bağlantılara en fazla iki saniye bitme süresi tanır.
+    func prepareToQuit() async {
+        await withCheckedContinuation { done in
+            proxyQueue.async { SystemProxy.disable(); done.resume() }
+        }
+        cleanedUp = true
+        retire()
+        isRunning = false
+        let deadline = Date().addingTimeInterval(2)
+        while !retired.isEmpty, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
     }
 
     /// Uygulama kapanırken: sistem ayarları geri alınmadan çıkılmasın diye eşzamanlı.
     func shutdown() {
         server?.stop()
         server = nil
-        proxyQueue.sync { SystemProxy.disable() }
+        retired.forEach { $0.stop() }
+        retired.removeAll()
+        if !cleanedUp { proxyQueue.sync { SystemProxy.disable() } }
     }
 
     private func restart() {
-        server?.stop()
-        server = nil
-        // Dinleyicinin portu bırakması için kısa bekleme. Sistem proxy'si yerinde kalır, hazır olunca yenilenir.
+        retire()
+        // Sistem proxy'si yerinde kalır; yeni sunucu hazır olunca yeni porta göre yenilenir.
         Task {
             try? await Task.sleep(for: .milliseconds(300))
             start()

@@ -1,0 +1,30 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "extended-srgb:0.26,0.56,1.00,1.00",
+      "extended-srgb:0.05,0.20,0.62,1.00"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [
+        { "image-name" : "shield-top.png", "name" : "Kalkan üst" }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "specular" : true,
+      "translucency" : { "enabled" : true, "value" : 0.4 }
+    },
+    {
+      "layers" : [
+        { "image-name" : "shield-bottom.png", "name" : "Kalkan alt" }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "specular" : true,
+      "translucency" : { "enabled" : true, "value" : 0.4 }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [ "watchOS" ],
+    "squares" : "shared"
+  }
+}

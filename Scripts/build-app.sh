@@ -4,9 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 ARCHS=(--arch arm64 --arch x86_64)
 
+./Scripts/compile-icon.sh
 swift build -c release --product DPIKalkan "${ARCHS[@]}"
 BIN="$(swift build -c release --product DPIKalkan "${ARCHS[@]}" --show-bin-path)/DPIKalkan"
 
@@ -14,7 +15,7 @@ APP="build/DPI Kalkan.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/DPIKalkan"
-cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp .build/icon/Assets.car .build/icon/AppIcon.icns "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -26,6 +27,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key><string>com.batuhan.dpikalkan</string>
     <key>CFBundleExecutable</key><string>DPIKalkan</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleIconName</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${VERSION}</string>
