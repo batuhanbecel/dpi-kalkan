@@ -103,6 +103,11 @@ private struct PowerButton: View {
     let isOn: Bool
     let action: () -> Void
     @State private var breathe = false
+    @State private var windowVisible = false
+
+    /// Menü penceresi kapanınca yok edilmeyip gizlendiği için sonsuz animasyon görünmezken de kare
+    /// çizdirmeye devam eder; yalnızca pencere görünür ve koruma açıkken nefes alınır.
+    private var shouldBreathe: Bool { isOn && windowVisible }
 
     private let size: CGFloat = 108
 
@@ -139,10 +144,59 @@ private struct PowerButton: View {
                 .opacity(isOn ? (breathe ? 0.65 : 0.4) : 0)
         }
         .animation(.spring(duration: 0.45, bounce: 0.3), value: isOn)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.9).repeatForever(autoreverses: true)) { breathe = true }
+        .background(WindowVisibilityReader(isVisible: $windowVisible))
+        .onChange(of: shouldBreathe, initial: true) { _, breathing in
+            if breathing {
+                withAnimation(.easeInOut(duration: 1.9).repeatForever(autoreverses: true)) { breathe = true }
+            } else {
+                // Animasyonsuz değişiklik süren sonsuz animasyonu da sonlandırır.
+                var stop = Transaction()
+                stop.disablesAnimations = true
+                withTransaction(stop) { breathe = false }
+            }
         }
         .accessibilityLabel(isOn ? "Korumayı kapat" : "Korumayı aç")
+    }
+}
+
+/// Görünümün bulunduğu pencerenin ekranda görünüp görünmediğini bildirir.
+private struct WindowVisibilityReader: NSViewRepresentable {
+    @Binding var isVisible: Bool
+
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.onChange = { visible in
+            DispatchQueue.main.async { if isVisible != visible { isVisible = visible } }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackingView, context: Context) {}
+
+    final class TrackingView: NSView {
+        var onChange: ((Bool) -> Void)?
+        private var observer: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            guard let window else { return onChange?(false) ?? () }
+            observer = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.report() }
+            }
+            report()
+        }
+
+        private func report() {
+            onChange?(window?.occlusionState.contains(.visible) ?? false)
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
     }
 }
 
