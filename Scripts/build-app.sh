@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 ARCHS=(--arch arm64 --arch x86_64)
 IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | grep -m1 -o '"Developer ID Application: [^"]*"' | tr -d '"' || true)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-dpi-kalkan}"

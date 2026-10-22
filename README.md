@@ -24,11 +24,9 @@ DPI Kalkan, servis sağlayıcıların derin paket incelemesiyle (DPI) uyguladı�
 
 1. [Releases](../../releases/latest) sayfasından `DPI-Kalkan.zip` dosyasını indirip aç.
 2. `DPI Kalkan.app` uygulamasını **Uygulamalar** klasörüne taşı.
-3. Uygulama Apple tarafından imzalanmadığı için ilk açılışta macOS uyarı verir. **Sistem Ayarları › Gizlilik ve Güvenlik** bölümünde **Yine de Aç**'a tıkla ya da Terminal'de şunu çalıştır:
+3. Uygulamayı aç. Developer ID ile imzalı ve Apple tarafından noterlenmiş olduğundan doğrudan açılır.
 
-   ```bash
-   xattr -dr com.apple.quarantine "/Applications/DPI Kalkan.app"
-   ```
+Sonraki sürümler uygulamanın içinden kurulur: yeni sürüm çıkınca menüde **Güncelle** düğmesi görünür.
 
 Menü çubuğunda kalkan simgesi ve **DPI** yazısı görünür; tıklayıp ortadaki güç düğmesiyle korumayı açıp kapatabilirsin.
 
